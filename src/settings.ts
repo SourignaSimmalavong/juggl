@@ -15,9 +15,9 @@ import type {IJugglSettings, StyleGroup} from 'juggl-api';
 import {getGraphColor} from './viz/stylesheet';
 
 export const emptyStyleGroup: StyleGroup = {filter: '',
-  color: 'black',
+  color: '#000000',
   shape: 'ellipse',
-  icon: {name: 'No icon', path: '', color: 'white'},
+  icon: {name: 'No icon', path: '', color: '#ffffff'},
   showInPane: true,
   show: true,
   size: 1.0};
@@ -102,14 +102,14 @@ export const genStyleGroups = function(plugin: JugglPlugin): StyleGroup[] {
     {filter: `class:dangling`,
       color: getGraphColor('color-fill-unresolved'),
       shape: 'ellipse',
-      icon: {name: 'No icon', path: '', color: 'white'},
+      icon: { name: 'No icon', path: '', color: '#ffffff'},
       showInPane: true,
       show: true,
       size: 1.0},
     {filter: `class:file -class:image`,
       color: getGraphColor('color-fill'),
       shape: 'ellipse',
-      icon: {name: 'No icon', path: '', color: 'white'},
+      icon: { name: 'No icon', path: '', color: '#ffffff'},
       showInPane: true,
       show: true,
       size: 1.0},
@@ -118,7 +118,7 @@ export const genStyleGroups = function(plugin: JugglPlugin): StyleGroup[] {
     genSheet.push({filter: `tag:#${tag}`,
       color: tagColorMap[tag],
       shape: 'ellipse',
-      icon: {name: 'No icon', path: '', color: 'white'},
+      icon: { name: 'No icon', path: '', color: '#ffffff'},
       showInPane: true,
       show: true,
       size: 1.0});
