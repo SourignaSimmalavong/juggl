@@ -16,14 +16,21 @@
       "dom.iterable"
     ],
     "esModuleInterop": true,
-    "types": ["node", "svelte"],
-    "paths": {"src":  ["*"]},
+    "types": [
+      "node",
+      "svelte",
+      "cytoscape"
+    ],
+    "paths": {
+      "src": [
+        "*"
+      ]
+    },
     "typeRoots": [
       "node_modules/@types/"
     ]
   },
   "include": [
     "./**/*"
-  ],
-  "exclude": ["node_modules/*"]
+  ]
 }

@@ -12,7 +12,7 @@ import terser from "@rollup/plugin-terser";
 const plugins = [
   ignore(["path", "url"], { commonjsBugFix: true }),
   commonjs({
-    include: ['node_modules/**', '../cytoscape.js-cxtmenu/**'],
+    include: ['node_modules\\**', 'D:\\DevRoot\\git\\cytoscape.js-cxtmenu\\**'],
   }),
   json(),
   svelte({
