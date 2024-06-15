@@ -328,7 +328,7 @@ export default class JugglPlugin extends Plugin implements IJugglPlugin {
       return element instanceof TFile;
     };
     let queue: TFolder[] = elements.filter(isDir) as TFolder[];
-    let files: TFile[] = [];
+    let files: TFile[] = elements.filter(isFile) as TFile[];
     while (queue.length) {
       const current_dir: TFolder = queue.pop() as TFolder;
       const current_elements: TAbstractFile[] = current_dir.children;
@@ -354,7 +354,6 @@ export default class JugglPlugin extends Plugin implements IJugglPlugin {
     }
 
     let files = this.getFilesFromDir(folder);
-    const names = files.map((f) => f.extension === 'md' ? f.basename : f.name);
 
     // @ts-ignore
     const mm = this.app.plugins.plugins["metadata-menu"].api;
@@ -386,20 +385,22 @@ export default class JugglPlugin extends Plugin implements IJugglPlugin {
 
     // Context Files should also include the files within the Global Static Folders.
     const static_dirs: string[] = context_payload_orig[0]["StaticDirs"];
+    console.log("static_dirs", static_dirs);
     let static_files: TFile[] = [];
     for (let static_dir of static_dirs) {
       const current_dir: TFolder = this.app.vault.getFolderByPath(static_dir) as TFolder;
       let current_static_files: TFile[] = this.getFilesFromDir(current_dir);
+      console.log(current_dir.path, current_static_files);
       static_files.push(...current_static_files);
     }
     // Make sure there is no duplicates.
     let files_set: Set<TFile> = new Set(files.concat(static_files));
     files = [...files_set.values()]
-
     console.log("files", files);
-    return;
 
-
+    // Update the other files in the Context Dirs (both dynamic and static).
+    // InLinksCount and OutLinksCount are independant.
+    // LinksCount depends on InLinksCount and OutLinksCount.
     files.forEach(async (file) => {
       await mm.updateSingleFormula({ file: file, fieldName: "InLinksCount" }, false);
       await mm.updateSingleFormula({ file: file, fieldName: "OutLinksCount" }, false);
@@ -411,6 +412,8 @@ export default class JugglPlugin extends Plugin implements IJugglPlugin {
     mm.applyUpdates();
     console.log("DONE Formulas others");
 
+    // Finally display the graph.
+    const names = files.map((f) => f.extension === 'md' ? f.basename : f.name);
     const leaf = this.app.workspace.getLeaf(true);
     const neovisView = new JugglView(leaf, this.settings.globalGraphSettings, this, names);
     await leaf.open(neovisView);
