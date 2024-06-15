@@ -357,7 +357,8 @@ export class Juggl extends Component implements IJuggl {
       mdPreviewView.appendChild(mdPreviewSection);
 
 
-      await MarkdownRenderer.renderMarkdown(mdContent, mdPreviewSection, sourcePath, null );
+      // await MarkdownRenderer.renderMarkdown(mdContent, mdPreviewSection, sourcePath, null);
+      await MarkdownRenderer.render(this.plugin.app, mdContent, mdPreviewSection, sourcePath, null );
 
       activeDocument.body.appendChild(newDiv);
       // @ts-ignore

@@ -1,9 +1,11 @@
 import {
   MetadataCache,
   Plugin, TFile, Vault, parseYaml, WorkspaceLeaf,
+  TAbstractFile,
+  TFolder,
 } from 'obsidian';
 import {
-  IJugglPluginSettings,
+  type IJugglPluginSettings,
   JugglGraphSettingsTab,
   DefaultJugglSettings, LAYOUTS,
   genStyleGroups, emptyStyleGroup,
@@ -18,7 +20,7 @@ import type {
   IJuggl, IJugglSettings, IJugglEvents,
 } from 'juggl-api';
 import { OBSIDIAN_STORE_NAME, ObsidianStore } from './obsidian-store';
-import cytoscape, { NodeSingular } from 'cytoscape';
+import cytoscape, { type NodeSingular } from 'cytoscape';
 import navigator from 'cytoscape-navigator';
 import popper from 'cytoscape-popper';
 import cola from 'cytoscape-cola';
@@ -35,6 +37,7 @@ import { WorkspaceManager } from './viz/workspaces/workspace-manager';
 import { JUGGL_NODES_VIEW_TYPE, JUGGL_STYLE_VIEW_TYPE, JUGGL_VIEW_TYPE, VizId } from 'juggl-api';
 import type { FSWatcher } from 'fs';
 import { GlobalWarningModal } from './ui/settings/global-graph-modal';
+import { getAPI } from "obsidian-dataview";
 
 
 // I got this from https://github.com/SilentVoid13/Templater/blob/master/src/fuzzy_suggester.ts
@@ -58,6 +61,7 @@ export default class JugglPlugin extends Plugin implements IJugglPlugin {
   workspaceManager: WorkspaceManager;
   watcher: FSWatcher;
   ribbonIcon: HTMLElement;
+  dirRibbonIcon: HTMLElement;
   eventHandlers: IJugglEvents[] = [];
 
   async onload(): Promise<void> {
@@ -106,6 +110,13 @@ export default class JugglPlugin extends Plugin implements IJugglPlugin {
       },
     });
     this.addCommand({
+      id: 'open-vis-dir',
+      name: 'Open dir graph',
+      callback: () => {
+        this.openDirGraph();
+      },
+    });
+    this.addCommand({
       id: 'open-vis-global',
       name: 'Open global graph',
       callback: () => {
@@ -151,7 +162,7 @@ export default class JugglPlugin extends Plugin implements IJugglPlugin {
           if (Object.keys(parsed).contains('local')) {
             this.addChild(new Juggl(el, this, stores, settings, [parsed.local]));
           } else if (Object.keys(parsed).contains('workspace')) {
-            const graph = new Juggl(el, this, stores, settings, null);
+            const graph = new Juggl(el, this, stores, settings, undefined);
             if (!this.workspaceManager.graphs.contains(parsed.workspace)) {
               throw new Error('Did not recognize workspace. Did you misspell its name?');
             }
@@ -170,7 +181,7 @@ export default class JugglPlugin extends Plugin implements IJugglPlugin {
           } else {
             throw new Error('Invalid query. Specify either the local property or the workspace property.');
           }
-        } catch (error) {
+        } catch (error: any) {
           // taken from https://github.com/jplattel/obsidian-query-language/blob/main/src/renderer.ts
           const errorElement = activeDocument.createElement('div');
           errorElement.addClass('juggl-error');
@@ -187,13 +198,13 @@ export default class JugglPlugin extends Plugin implements IJugglPlugin {
     const createNodesPane = function () {
       if (plugin.app.workspace.getLeavesOfType(JUGGL_NODES_VIEW_TYPE).length === 0) {
         const leaf = plugin.app.workspace.getRightLeaf(false);
-        leaf.setViewState({ type: JUGGL_NODES_VIEW_TYPE });
+        leaf?.setViewState({ type: JUGGL_NODES_VIEW_TYPE });
       }//
     };
     const createStylePane = function () {
       if (plugin.app.workspace.getLeavesOfType(JUGGL_STYLE_VIEW_TYPE).length === 0) {
         const leaf = plugin.app.workspace.getRightLeaf(false);
-        leaf.setViewState({ type: JUGGL_STYLE_VIEW_TYPE });
+        leaf?.setViewState({ type: JUGGL_STYLE_VIEW_TYPE });
       }
     };
     this.app.workspace.onLayoutReady(createNodesPane);
@@ -251,6 +262,17 @@ export default class JugglPlugin extends Plugin implements IJugglPlugin {
     }
   }
 
+  public setDirIcon() {
+    if (this.dirRibbonIcon) {
+      this.dirRibbonIcon.detach();
+    }
+    if (this.settings.localGraphRibbon) {
+      this.dirRibbonIcon = this.addRibbonIcon('cat', 'Juggl local graph', () => {
+        this.openDirGraph();
+      });
+    }
+  }
+
   public async openFileFromNode(node: NodeSingular, newLeaf = false): Promise<TFile> {
     const id = VizId.fromNode(node);
     if (!(id.storeId === 'core')) {
@@ -283,13 +305,7 @@ export default class JugglPlugin extends Plugin implements IJugglPlugin {
   async openGlobalGraph() {
     const leaf = this.app.workspace.getLeaf(false);
     // const query = this.localNeighborhoodCypher(name);
-    const file = this.app.workspace.getActiveFile();
-    if (!file) {
-      return;
-    }
-    const folder: string = file.parent?.path as string;
-
-    const names = this.app.vault.getFiles().filter((f) => f.path.startsWith(folder)).map((f) => f.extension === 'md' ? f.basename : f.name);
+    const names = this.app.vault.getFiles().map((f) => f.extension === 'md' ? f.basename : f.name);
     if (names.length > 250) {
       const modal = new GlobalWarningModal(this.app, async () => {
         const neovisView = new JugglView(leaf, this.settings.globalGraphSettings, this, names);
@@ -301,6 +317,103 @@ export default class JugglPlugin extends Plugin implements IJugglPlugin {
       const neovisView = new JugglView(leaf, this.settings.globalGraphSettings, this, names);
       await leaf.open(neovisView);
     }
+  }
+
+  private getFilesFromDir(dir: TFolder): TFile[] {
+    const elements: TAbstractFile[] = dir.children;
+    const isDir = (element: TAbstractFile, index: number, array: TAbstractFile[]): boolean => {
+      return element instanceof TFolder;
+    };
+    const isFile = (element: TAbstractFile, index: number, array: TAbstractFile[]): boolean => {
+      return element instanceof TFile;
+    };
+    let queue: TFolder[] = elements.filter(isDir) as TFolder[];
+    let files: TFile[] = [];
+    while (queue.length) {
+      const current_dir: TFolder = queue.pop() as TFolder;
+      const current_elements: TAbstractFile[] = current_dir.children;
+      const current_elements_dirs: TFolder[] = current_elements.filter(isDir) as TFolder[];
+      const current_elements_files: TFile[] = current_elements.filter(isFile) as TFile[];
+
+      files.push(...current_elements_files);
+      queue.push(...current_elements_dirs);
+    }
+
+    return files;
+  }
+
+  async openDirGraph() {
+    // const query = this.localNeighborhoodCypher(name);
+    const file = this.app.workspace.getActiveFile();
+    if (!file) {
+      return;
+    }
+    const folder: TFolder | null = file.parent;
+    if (!folder) {
+      return;
+    }
+
+    let files = this.getFilesFromDir(folder);
+    const names = files.map((f) => f.extension === 'md' ? f.basename : f.name);
+
+    // @ts-ignore
+    const mm = this.app.plugins.plugins["metadata-menu"].api;
+    let global_file: TFile = this.app.vault.getAbstractFileByPath("Global.md") as TFile;
+
+    // Refresh the Global Dynamic dir with the parent dir of current file.
+    let context_payload_orig = await mm.getValues(global_file, "Context");
+    console.log("context_payload_orig", context_payload_orig);
+    console.log("context_payload_orig dyn dir", context_payload_orig[0]["DynamicDir"]);
+    let context_payload = {
+      value: context_payload_orig[0]
+    };
+    context_payload.value["DynamicDir"] = folder.path;
+
+    let success = await mm.postNamedFieldsValues_synced(global_file, [
+      { name: "Context", payload: context_payload },
+    ]);
+    console.log("DONE Context");
+
+    if (!success) {
+      console.log("Failure postNamedFieldsValues_synced");
+      return;
+    }
+
+    // Context Files is composed of files within the Context Dir 
+    // (i.e. files next to current file and in sub-directories)
+    await mm.updateFormulas({ file: global_file, fieldName: "ContextFiles" }, false);
+    console.log("DONE Formulas");
+
+    // Context Files should also include the files within the Global Static Folders.
+    const static_dirs: string[] = context_payload_orig[0]["StaticDirs"];
+    let static_files: TFile[] = [];
+    for (let static_dir of static_dirs) {
+      const current_dir: TFolder = this.app.vault.getFolderByPath(static_dir) as TFolder;
+      let current_static_files: TFile[] = this.getFilesFromDir(current_dir);
+      static_files.push(...current_static_files);
+    }
+    // Make sure there is no duplicates.
+    let files_set: Set<TFile> = new Set(files.concat(static_files));
+    files = [...files_set.values()]
+
+    console.log("files", files);
+    return;
+
+
+    files.forEach(async (file) => {
+      await mm.updateSingleFormula({ file: file, fieldName: "InLinksCount" }, false);
+      await mm.updateSingleFormula({ file: file, fieldName: "OutLinksCount" }, false);
+    });
+    mm.applyUpdates();
+    files.forEach(async (file) => {
+      await mm.updateSingleFormula({ file: file, fieldName: "LinksCount" }, false);
+    });
+    mm.applyUpdates();
+    console.log("DONE Formulas others");
+
+    const leaf = this.app.workspace.getLeaf(true);
+    const neovisView = new JugglView(leaf, this.settings.globalGraphSettings, this, names);
+    await leaf.open(neovisView);
   }
 
   public activeGraphs(): IJuggl[] {

@@ -264,6 +264,9 @@ ${edge.data.context}`;
     }
 
     async refreshNode(id: VizId, view: IJuggl) {
+      if (!view) {
+        return;
+      }
       const idS = id.toId();
       let correctEdges: IMergedToGraph;
       let node = view.viz.$id(idS);
