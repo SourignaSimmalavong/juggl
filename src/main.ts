@@ -20,7 +20,7 @@ import type {
   IJuggl, IJugglSettings, IJugglEvents,
 } from 'juggl-api';
 import { OBSIDIAN_STORE_NAME, ObsidianStore } from './obsidian-store';
-import cytoscape, { type NodeSingular } from 'cytoscape';
+import cytoscape, { type CollectionArgument, type Core, type NodeCollection, type NodeSingular, type SingularElementArgument } from 'cytoscape';
 import navigator from 'cytoscape-navigator';
 import popper from 'cytoscape-popper';
 import cola from 'cytoscape-cola';
@@ -353,16 +353,43 @@ export default class JugglPlugin extends Plugin implements IJugglPlugin {
       return;
     }
 
-    let files = this.getFilesFromDir(folder);
+    const files: TFile[] = this.getFilesFromDir(folder);
+
+    // Opening the tab takes time. Do it first and then update the formulas.
+    // Display the graph in the background (takes time)
+    const names = files.map((f) => f.extension === 'md' ? f.basename : f.name);
+    const leaf = this.app.workspace.getLeaf(true);
+    const neovisView = new JugglView(leaf, this.settings.dirGraphSettings, this, names);
+    console.log("Created neovisView");
+
+    let juggl = neovisView.juggl;
+    juggl.events.on('expand', async (nodes: NodeCollection) => { this.updateVizFiles(nodes, false); });
+    juggl.events.on('hide', async (nodes: NodeCollection) => { this.updateVizFiles(nodes, false); });
+    // juggl.events.on('elementsChange', async () => { this.updateVizFiles(); });
+    juggl.events.on('vizReady', async () => { this.updateVizFiles(cytoscape().collection(), true); });
+    console.log("Added juggl viz events");
+
+    await leaf.open(neovisView);
+    console.log("Opened neovisView");
+
+    // Update the formulas.
 
     // @ts-ignore
     const mm = this.app.plugins.plugins["metadata-menu"].api;
+
+    // await mm.lock();
+
     let global_file: TFile = this.app.vault.getAbstractFileByPath("Global.md") as TFile;
 
     // Refresh the Global Dynamic dir with the parent dir of current file.
     let context_payload_orig = await mm.getValues(global_file, "Context");
-    console.log("context_payload_orig", context_payload_orig);
-    console.log("context_payload_orig dyn dir", context_payload_orig[0]["DynamicDir"]);
+    if (!context_payload_orig) {
+      console.log('Cannot get value "Context".');
+      // await mm.unlock();
+      return;
+    }
+    // console.log("context_payload_orig", context_payload_orig);
+    // console.log("context_payload_orig dyn dir", context_payload_orig[0]["DynamicDir"]);
     let context_payload = {
       value: context_payload_orig[0]
     };
@@ -375,12 +402,14 @@ export default class JugglPlugin extends Plugin implements IJugglPlugin {
 
     if (!success) {
       console.log("Failure postNamedFieldsValues_synced");
+      // await mm.unlock();
       return;
     }
 
     // Context Files is composed of files within the Context Dir 
     // (i.e. files next to current file and in sub-directories)
-    await mm.updateFormulas({ file: global_file, fieldName: "ContextFiles" }, false);
+    await mm.updateSingleFormula({ file: global_file, fieldName: "ContextDirFiles" });
+    await mm.applyUpdates();
     console.log("DONE Formulas");
 
     // Context Files should also include the files within the Global Static Folders.
@@ -394,29 +423,149 @@ export default class JugglPlugin extends Plugin implements IJugglPlugin {
       static_files.push(...current_static_files);
     }
     // Make sure there is no duplicates.
-    let files_set: Set<TFile> = new Set(files.concat(static_files));
-    files = [...files_set.values()]
-    console.log("files", files);
+    let files_and_static_set: Set<TFile> = new Set(files.concat(static_files));
+    let files_and_static: TFile[] = [...files_and_static_set.values()]
+    console.log("files_and_static", files_and_static);
 
     // Update the other files in the Context Dirs (both dynamic and static).
     // InLinksCount and OutLinksCount are independant.
     // LinksCount depends on InLinksCount and OutLinksCount.
-    files.forEach(async (file) => {
-      await mm.updateSingleFormula({ file: file, fieldName: "InLinksCount" }, false);
-      await mm.updateSingleFormula({ file: file, fieldName: "OutLinksCount" }, false);
-    });
-    mm.applyUpdates();
-    files.forEach(async (file) => {
-      await mm.updateSingleFormula({ file: file, fieldName: "LinksCount" }, false);
-    });
-    mm.applyUpdates();
+    // Update all these formulas in parallel.
+    await Promise.all(files.map((file: TFile) => new Promise(res => {
+      return Promise.all([
+        mm.updateSingleFormula({ file: file, fieldName: "InLinks" }),
+        mm.updateSingleFormula({ file: file, fieldName: "OutLinks" }),
+      ]).then(res);
+    })));
+    console.log("DONE single formulas");
+    await mm.applyUpdates();
     console.log("DONE Formulas others");
 
-    // Finally display the graph.
-    const names = files.map((f) => f.extension === 'md' ? f.basename : f.name);
-    const leaf = this.app.workspace.getLeaf(true);
-    const neovisView = new JugglView(leaf, this.settings.globalGraphSettings, this, names);
-    await leaf.open(neovisView);
+    // await mm.unlock();
+
+    // // Display the graph in the background (takes time)
+    // const names = files.map((f) => f.extension === 'md' ? f.basename : f.name);
+    // const leaf = this.app.workspace.getLeaf(true);
+    // const neovisView = new JugglView(leaf, this.settings.dirGraphSettings, this, names);
+    // console.log("Created neovisView");
+
+
+    // let juggl = neovisView.juggl;
+    // juggl.events.on('expand', async (nodes: NodeCollection) => { this.updateVizFiles(nodes, false); });
+    // juggl.events.on('hide', async (nodes: NodeCollection) => { this.updateVizFiles(nodes, false); });
+    // // juggl.events.on('elementsChange', async () => { this.updateVizFiles(); });
+    // juggl.events.on('vizReady', async () => { this.updateVizFiles(cytoscape().collection(), true); });
+    // console.log("Added juggl viz events");
+
+
+    // await leaf.open(neovisView);
+    // console.log("Opened neovisView");
+
+  }
+
+  private async updateVizFiles(expandedNodes: NodeCollection, force: boolean = false) {
+    // @ts-ignore
+    const mm = this.app.plugins.plugins["metadata-menu"].api;
+
+    // await mm.lock();
+
+    console.log("updateVizFiles");
+
+    console.log("expandedNodes", expandedNodes);
+
+    expandedNodes = expandedNodes.filter((node: NodeSingular) => {
+      const id: VizId = VizId.fromNode(node);
+      if (id.storeId === 'core') {
+        const file: TFile | null = this.metadata.getFirstLinkpathDest(id.id, '');
+        if (file) {
+          return file.path != "Global.md";
+        }
+      }
+      return true;
+    });
+
+    // const expandedIds = expandedNodes.map((n) => VizId.fromNode(n));
+    if (expandedNodes.length == 0 && !force) {
+      return;
+    }
+
+    const neovisView: JugglView | null = this.app.workspace.getActiveViewOfType(JugglView);
+    if (neovisView == null) {
+      console.log("Cannot find JugglView (viz not ready yet)");
+      // await mm.unlock();
+      return;
+    }
+    // const neighbourhood = await neovisView.juggl.neighbourhood(expandedIds);
+    // console.log("neighborhood", neighbourhood);
+
+    // await mm.unlock();
+    // return;
+
+
+    let global_file: TFile = this.app.vault.getAbstractFileByPath("Global.md") as TFile;
+
+    // Get the global Context
+    let context_payload_orig = await mm.getValues(global_file, "Context");
+
+    // Refresh the VizFiles (visible nodes)
+    // const neovisView: JugglView | null = this.app.workspace.getActiveViewOfType(JugglView);
+    // if (neovisView == null) {
+    //   console.log("Cannot find JugglView (viz not ready yet)");
+    //   await mm.unlock();
+    //   return;
+    // }
+
+    const nodes: NodeCollection = neovisView.juggl.viz.nodes();
+    const visible_nodes: NodeCollection = nodes.filter((node: NodeSingular, i: number, eles: CollectionArgument) => {
+      return node.visible();
+    });
+    const visible_nodes_paths: string[] = visible_nodes.map((node: NodeSingular, i: number, eles: CollectionArgument) => {
+      const id: VizId = VizId.fromNode(node);
+      if (id.storeId === 'core') {
+        const file: TFile | null = this.metadata.getFirstLinkpathDest(id.id, '');
+        if (file) {
+          return file.path;
+        }
+      }
+      return "";
+    }).filter((path: string) => path != "");
+
+    console.log("visible_nodes_paths", visible_nodes_paths);
+
+    let context_payload = {
+      value: context_payload_orig[0]
+    };
+    context_payload.value["VizFiles"] = visible_nodes_paths.join(", ");
+
+    let success = await mm.postNamedFieldsValues_synced(global_file, [
+      { name: "Context", payload: context_payload },
+    ]);
+    if (!success) {
+      console.log("[updateVizFiles] Failure postNamedFieldsValues_synced");
+      // await mm.unlock();
+      return;
+    }
+
+    // Update the VizInLinksCount and VizOutLinksCount of all the VizFiles.
+    let visible_nodes_files: (TFile | null)[] = visible_nodes_paths.map((path: string) => {
+      const file = this.app.vault.getFileByPath(path);
+      if (!file) {
+        console.log(`Cannot open file ${path}`);
+        return null;
+      }
+      return file;
+    });
+    let visible_nodes_files_sure: TFile[] = visible_nodes_files.filter((file: TFile | null) => file) as TFile[];
+    await Promise.all(visible_nodes_files_sure.map((file: TFile) => new Promise(res => {
+      return Promise.all([
+        mm.updateSingleFormula({ file: file, fieldName: "VizInLinksCount" }),
+        mm.updateSingleFormula({ file: file, fieldName: "VizOutLinksCount" }),
+      ]).then(res);
+    })));
+    await mm.applyUpdates();
+    console.log("Finished updating viz links count");
+
+    // await mm.unlock();
   }
 
   public activeGraphs(): IJuggl[] {

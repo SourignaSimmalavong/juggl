@@ -144,6 +144,7 @@ export interface IJugglPluginSettings {
   imgServerPort: number;
   debug: boolean;
   graphSettings: IJugglSettings;
+  dirGraphSettings: IJugglSettings;
   globalGraphSettings: IJugglSettings;
   embedSettings: IJugglSettings;
   globalStyleGroups: StyleGroup[];
@@ -203,6 +204,29 @@ export const DefaultJugglSettings: IJugglPluginSettings = {
     styleGroups: [],
     toolbar: false,
     width: '100%',
+    zoomSpeed: 1,
+  },
+  dirGraphSettings: {
+    animateLayout: true,
+    autoAddNodes: false,
+    autoExpand: false,
+    autoZoom: false,
+    coreStore: OBSIDIAN_STORE_NAME,
+    expandInitial: true,
+    fdgdLayout: 'cola',
+    filter: '-class:dangling -class:file',
+    height: '100%',
+    width: '100%',
+    limit: 10000,
+    hoverEdges: false,
+    layout: 'force-directed',
+    mergeEdges: true,
+    mode: 'workspace',
+    navigator: true,
+    openWithShift: true,
+    readContent: false,
+    styleGroups: [],
+    toolbar: true,
     zoomSpeed: 1,
   },
   globalGraphSettings: {
@@ -276,6 +300,7 @@ export class JugglGraphSettingsTab extends PluginSettingTab {
           .onChange((newValue) => {
             this.plugin.settings.globalGraphSettings.navigator = newValue;
             this.plugin.settings.graphSettings.navigator = newValue;
+            this.plugin.settings.dirGraphSettings.navigator = newValue;
             this.plugin.saveData(this.plugin.settings);
           });
       });
@@ -303,6 +328,7 @@ export class JugglGraphSettingsTab extends PluginSettingTab {
         dropdown.setValue(this.plugin.settings.graphSettings.fdgdLayout)
           .onChange((newValue: FDGDLayouts) => {
             this.plugin.settings.graphSettings.fdgdLayout = newValue;
+            this.plugin.settings.dirGraphSettings.fdgdLayout = newValue;
             this.plugin.settings.embedSettings.fdgdLayout = newValue;
             this.plugin.settings.globalGraphSettings.fdgdLayout = newValue;
             this.plugin.saveData(this.plugin.settings);
@@ -370,6 +396,7 @@ export class JugglGraphSettingsTab extends PluginSettingTab {
         toggle.setValue(this.plugin.settings.graphSettings.autoZoom)
           .onChange((new_value) => {
             this.plugin.settings.graphSettings.autoZoom = new_value;
+            this.plugin.settings.dirGraphSettings.autoZoom = new_value;
             this.plugin.settings.globalGraphSettings.autoZoom = new_value;
             this.plugin.saveData(this.plugin.settings);
           });
@@ -387,6 +414,7 @@ export class JugglGraphSettingsTab extends PluginSettingTab {
           .onChange((newValue) => {
             this.plugin.settings.graphSettings.zoomSpeed = newValue;
             this.plugin.settings.embedSettings.zoomSpeed = newValue;
+            this.plugin.settings.dirGraphSettings.zoomSpeed = newValue;
             this.plugin.settings.globalGraphSettings.zoomSpeed = newValue;
             this.plugin.saveData(this.plugin.settings);
           });
@@ -411,6 +439,7 @@ export class JugglGraphSettingsTab extends PluginSettingTab {
           .onChange((new_value) => {
             this.plugin.settings.graphSettings.hoverEdges = new_value;
             this.plugin.settings.embedSettings.hoverEdges = new_value;
+            this.plugin.settings.dirGraphSettings.hoverEdges = new_value;
             this.plugin.settings.globalGraphSettings.hoverEdges = new_value;
             this.plugin.saveData(this.plugin.settings);
           });
@@ -423,6 +452,7 @@ export class JugglGraphSettingsTab extends PluginSettingTab {
           .onChange((new_value) => {
             this.plugin.settings.graphSettings.openWithShift = new_value;
             this.plugin.settings.embedSettings.openWithShift = new_value;
+            this.plugin.settings.dirGraphSettings.openWithShift = new_value;
             this.plugin.settings.globalGraphSettings.openWithShift = new_value;
             this.plugin.saveData(this.plugin.settings);
           });
