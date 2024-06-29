@@ -16,6 +16,7 @@ import cytoscape, {
   NodeCollection,
   NodeDefinition,
   NodeSingular, Singular,
+  type CollectionReturnValue,
 } from 'cytoscape';
 import type {
   IAGMode,
@@ -44,6 +45,7 @@ import { LocalMode } from './local-mode';
 import { parseLayoutSettings } from './layout-settings';
 import { filter } from './query-builder';
 import { log } from 'console';
+import type { Link } from 'obsidian-dataview';
 
 export const MD_VIEW_TYPE = 'markdown';
 
@@ -414,7 +416,7 @@ export class Juggl extends Component implements IJuggl {
     return edges;
   }
 
-  async expand(toExpand: NodeCollection, batch = true, triggerGraphChanged = true): Promise<IMergedToGraph | null> {
+  async expand(toExpand: NodeCollection, batch = true, triggerGraphChanged = true, doIncludeInLinks = true, doIncludeOutLinks = true): Promise<IMergedToGraph> {
     if (toExpand.length === 0) {
       return Promise.resolve(null);
     }
@@ -425,7 +427,60 @@ export class Juggl extends Component implements IJuggl {
     toExpand.addClass(CLASS_PROTECTED);
     // Currently returns the edges merged into the graph, not the full neighborhood
     const expandedIds = toExpand.map((n) => VizId.fromNode(n));
-    const neighbourhood = await this.neighbourhood(expandedIds);
+
+    // @ts-ignore
+    const dv = this.plugin.app.plugins.plugins["dataview"].api;
+
+    let neighbourhood: NodeDefinition[] = await this.neighbourhood(expandedIds);
+    if (doIncludeOutLinks && !doIncludeInLinks) {
+      let all_outlinks: string[] = toExpand.map((n: NodeSingular) => {
+        let path = n.data().path;
+        let current_outlinks = dv.page(path).file.outlinks.values;
+        return current_outlinks.map((v: Link) => v.path);
+      })
+      all_outlinks = [...new Set<string>(all_outlinks).values()].flat(Infinity);
+
+      console.log("[expandOutLinks] neighbourhood before", neighbourhood);
+      neighbourhood = neighbourhood.filter((nd: NodeDefinition) => {
+        return all_outlinks.includes(nd.data.path)
+      });
+      console.log("[expandOutLinks] neighbourhood after", neighbourhood);
+    }
+    else if (!doIncludeOutLinks && doIncludeInLinks) {
+      let all_inlinks: string[] = toExpand.map((n: NodeSingular) => {
+        let path = n.data().path;
+        let current_inlinks = dv.page(path).file.inlinks.values;
+        return current_inlinks.map((v: Link) => v.path);
+      })
+      all_inlinks = [...new Set<string>(all_inlinks).values()].flat(Infinity);
+
+      console.log("[expandInLinks] neighbourhood before", neighbourhood);
+      neighbourhood = neighbourhood.filter((nd: NodeDefinition) => {
+        return all_inlinks.includes(nd.data.path)
+      });
+      console.log("[expandInLinks] neighbourhood after", neighbourhood);
+
+      // // '.reduce' merge all the NodeCollection[] into a single NodeCollection.
+      // let outgoers: NodeCollection = toExpand.map((n) => {
+      //   return n.incomers().nodes();
+      // }).reduce((acc, curr) => acc.union(curr));
+
+      // // Convert the outgoer nodes to NodeDefinition objects
+      // neighbourhood = outgoers.map(node => {
+      //   return {
+      //     id: node.id(),
+      //     data: node.data()
+      //     // Add additional properties as needed
+      //   };
+      // });
+    }
+    else if (doIncludeInLinks && doIncludeOutLinks) {
+      neighbourhood = await this.neighbourhood(expandedIds);
+    } else {
+      console.error("At least one must be true (doIncludeInLinks, doIncludeOutLinks)");
+      throw Error("At least one must be true (doIncludeInLinks, doIncludeOutLinks)");
+    }
+
     this.mergeToGraph(neighbourhood, false, false);
     const nodes = this.viz.collection();
     neighbourhood.forEach((n) => {

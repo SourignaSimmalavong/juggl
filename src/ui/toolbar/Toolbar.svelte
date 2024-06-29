@@ -12,6 +12,8 @@
     export let gridClick;
     export let hierarchyClick;
     export let expandClick;
+    export let expandInLinksClick;
+    export let expandOutLinksClick;
     export let collapseClick;
     export let hideClick;
     export let selectAllClick;
@@ -63,6 +65,10 @@
 <div class="cy-toolbar-section">
     <ToolbarButton icon={icons.ag_expand} onClick={expandClick}
                    disabled="{disableOnNoneSelected}" title="Expand selected nodes (E)"/>
+    <ToolbarButton icon={icons.ag_expand} onClick={expandInLinksClick}
+                   disabled="{disableOnNoneSelected}" title="Expand selected nodes (incoming nodes only) (J)"/>
+    <ToolbarButton icon={icons.ag_expand} onClick={expandOutLinksClick}
+                   disabled="{disableOnNoneSelected}" title="Expand selected nodes (outgoing nodes only) (.)"/>
     <ToolbarButton icon={icons.ag_collapse} onClick={collapseClick}
                    disabled="{disableOnNoneSelected}" title="Collapse expanded nodes (C)"/>
     <ToolbarButton icon={icons.ag_hide} onClick={hideClick}

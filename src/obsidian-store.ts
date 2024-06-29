@@ -271,8 +271,8 @@ ${edge.data.context}`;
 
 
     if (!view.settings.addNodesOnRefresh) {
-      const all_nodes: NodeCollection = view.viz.nodes();
-      all_nodes.filter((n: NodeSingular) => { return n.data.name == id.id; });
+      let all_nodes: NodeCollection = view.viz.nodes();
+      all_nodes = all_nodes.filter((n: NodeSingular) => { return n.data.name == id.id; });
 
       if (all_nodes.empty()) {
         return;

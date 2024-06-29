@@ -232,6 +232,10 @@ export class WorkspaceMode extends Component implements IAGMode {
       }
       if (evt.key === 'e') {
         await this.expandSelection();
+      } else if (evt.key === '.') {
+        await this.expandOutLinksSelection();
+      } else if (evt.key === 'j') {
+        await this.expandInLinksSelection();
       } else if (evt.key === 'h' || evt.key === 'Backspace') {
         this.removeSelection();
       } else if (evt.key === 'i') {
@@ -244,7 +248,7 @@ export class WorkspaceMode extends Component implements IAGMode {
         this.pinSelection();
       } else if (evt.key === 'u') {
         this.unpinSelection();
-      } else if (evt.key === 'c') {
+      } else if (evt.key === 'c' || evt.key === 'o') {
         this.collapseSelection();
       } else if (evt.key === 'v') {
         this.view.fitView();
@@ -355,6 +359,8 @@ export class WorkspaceMode extends Component implements IAGMode {
         viz: this.viz,
         filterValue: this.view.settings.filter,
         expandClick: this.expandSelection.bind(this),
+        expandInLinksClick: this.expandInLinksSelection.bind(this),
+        expandOutLinksClick: this.expandOutLinksSelection.bind(this),
         fdgdClick: () => this.view.setLayout(getLayoutSetting('force-directed', this.view.settings)),
         concentricClick: () => this.view.setLayout(getLayoutSetting('circle')),
         gridClick: () => this.view.setLayout(getLayoutSetting('grid')),
@@ -417,6 +423,14 @@ export class WorkspaceMode extends Component implements IAGMode {
 
   async expandSelection() {
     await this.view.expand(this.viz.nodes(':selected'));
+  }
+
+  async expandInLinksSelection() {
+    await this.view.expand(this.viz.nodes(':selected'), true, true, true, false);
+  }
+
+  async expandOutLinksSelection() {
+    await this.view.expand(this.viz.nodes(':selected'), true, true, false, true);
   }
 
   collapse(nodes: NodeCollection) {
