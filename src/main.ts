@@ -37,7 +37,7 @@ import { WorkspaceManager } from './viz/workspaces/workspace-manager';
 import { JUGGL_NODES_VIEW_TYPE, JUGGL_STYLE_VIEW_TYPE, JUGGL_VIEW_TYPE, VizId } from 'juggl-api';
 import type { FSWatcher } from 'fs';
 import { GlobalWarningModal } from './ui/settings/global-graph-modal';
-import { getAPI } from "obsidian-dataview";
+import { getAPI, type Link } from "obsidian-dataview";
 
 
 // I got this from https://github.com/SilentVoid13/Templater/blob/master/src/fuzzy_suggester.ts
@@ -249,6 +249,12 @@ export default class JugglPlugin extends Plugin implements IJugglPlugin {
     }));
     this.setGlobalIcon();
     this.addChild(new ImageServer(this));
+
+
+    // TODO: reenable events once I find a way not to refresh the nodes (and lose everything in the graph)
+    //       when files are reindexed.
+    // this.app.workspace.on('active-leaf-change', this.updateCurrentGlobal, this);
+
   }
 
   public setGlobalIcon() {
@@ -342,6 +348,86 @@ export default class JugglPlugin extends Plugin implements IJugglPlugin {
     return files;
   }
 
+  private async getGlobal(file: TFile): Promise<TFile | null> {
+    let global_parent_str = `Global/${file.parent?.path}`;
+    let global_filepath: string = `${global_parent_str}/Global ${file.basename}.md`;
+    let global_parent = this.app.vault.getFolderByPath(global_parent_str);
+    if (!global_parent) {
+      this.app.vault.createFolder("/" + global_parent_str);
+    }
+    let global_file: TAbstractFile | null = this.app.vault.getAbstractFileByPath(global_filepath);
+    if (!global_file) {
+      global_file = await this.app.vault.create(global_filepath, "") as TFile;
+      console.log(`Created global file: ${global_file.path}`);
+
+      // @ts-ignore
+      const mm = this.app.plugins.plugins["metadata-menu"].api;
+
+      let success = await mm.postNamedFieldsValues_synced(global_file, [{ name: "fileClass", payload: { value: "Global" } }]);
+      if (!success) {
+        console.log("Failure postNamedFieldsValues_synced");
+        return null;
+      }
+
+      await mm.insertMissingFields(global_file, -1, false, false, "Global", undefined, true);
+    }
+
+    console.log(`Get global file: ${global_file.path}`);
+
+    return global_file as TFile;
+  }
+
+  private async updateCurrentGlobal(currentGlobal: TFile) { //  leaf: WorkspaceLeaf | null) {
+    // // console.log("this", this);
+    // if (!leaf) {
+    //   return;
+    // }
+
+    // let jugglView = leaf.view;
+    // if (!(jugglView instanceof JugglView)) {
+    //   console.log("not a JugglView");
+    //   return;
+    // }
+
+    // Apply the current global file path to the super-global file.
+    let superGlobal = await this.app.vault.getFileByPath("Global.md");
+    if (!superGlobal) {
+      console.log("Could not load Global.md");
+      return;
+    }
+
+    // if (!jugglView.juggl) {
+    //   console.log("juggl is null");
+    //   return;
+    // }
+    // let currentGlobal: TFile | null = jugglView.juggl.globalFile;
+
+    // if (!currentGlobal) {
+    //   console.log("No global file for current JugglView. Should not happen!");
+    //   return;
+    // }
+
+    // @ts-ignore
+    const mm = this.app.plugins.plugins["metadata-menu"].api;
+
+    const success = await mm.postNamedFieldsValues_synced(superGlobal,
+      [
+        {
+          name: "CurrentGlobal",
+          payload:
+          {
+            value: "[[" + currentGlobal.path + "]]"
+          }
+        }
+      ]);
+    if (success) {
+      console.log(`Updated current global to ${currentGlobal.path}`);
+    }
+    else {
+      console.log(`Failed to update current global to ${currentGlobal.path}`);
+    }
+  }
+
   async openDirGraph() {
     // const query = this.localNeighborhoodCypher(name);
     const file = this.app.workspace.getActiveFile();
@@ -358,40 +444,59 @@ export default class JugglPlugin extends Plugin implements IJugglPlugin {
     // Opening the tab takes time. Do it first and then update the formulas.
     // Display the graph in the background (takes time)
     const names = files.map((f) => f.extension === 'md' ? f.basename : f.name);
-    const leaf = this.app.workspace.getLeaf(true);
+    const leaf: WorkspaceLeaf = this.app.workspace.splitActiveLeaf(this.settings.splitDirection); //this.app.workspace.getLeaf(true);
     const neovisView = new JugglView(leaf, this.settings.dirGraphSettings, this, names);
     console.log("Created neovisView");
 
     let juggl = neovisView.juggl;
-    juggl.events.on('expand', async (nodes: NodeCollection) => { this.updateVizFiles(nodes, false); });
-    juggl.events.on('hide', async (nodes: NodeCollection) => { this.updateVizFiles(nodes, false); });
-    // juggl.events.on('elementsChange', async () => { this.updateVizFiles(); });
-    juggl.events.on('vizReady', async () => { this.updateVizFiles(cytoscape().collection(), true); });
+    // TODO: reenable events once I find a way not to refresh the nodes (and lose everything in the graph)
+    //       when files are reindexed.
+    // juggl.events.on('expand', async (nodes: NodeCollection) => { this.updateVizFiles(nodes, false); });
+    // juggl.events.on('hide', async (nodes: NodeCollection) => { this.updateVizFiles(nodes, false); });
+    // juggl.events.on('vizReady', async () => { this.updateVizFiles(cytoscape().collection(), true); });
+    // juggl.events.on('elementsChange', async () => { console.log("baouuuuuuuuuuuuuuu!") });
     console.log("Added juggl viz events");
-
-    await leaf.open(neovisView);
-    console.log("Opened neovisView");
 
     // Update the formulas.
 
     // @ts-ignore
     const mm = this.app.plugins.plugins["metadata-menu"].api;
+    // @ts-ignore
+    const dv = this.app.plugins.plugins["dataview"].api;
 
-    // await mm.lock();
-
-    let global_file: TFile = this.app.vault.getAbstractFileByPath("Global.md") as TFile;
-
-    // Refresh the Global Dynamic dir with the parent dir of current file.
-    let context_payload_orig = await mm.getValues(global_file, "Context");
-    if (!context_payload_orig) {
-      console.log('Cannot get value "Context".');
-      // await mm.unlock();
+    let global_file: TFile | null = await this.getGlobal(file);
+    if (!global_file) {
+      console.log(`Could not create global file for "${file.path}"`);
       return;
     }
+
+    // Save the global file for later updates.
+    juggl.globalFile = global_file;
+
+    // Refresh the Global Dynamic dir with the parent dir of current file.
+    let context_payload_orig_list = await mm.getValues(global_file, "Context");
+    if (context_payload_orig_list.length == 0) {
+      console.log("context_payload_orig_list is empty");
+      return;
+    }
+    let context_payload_orig = context_payload_orig_list[0];
+    if (!context_payload_orig) {
+      console.log('Cannot get value "Context". Using default');
+      context_payload_orig = {
+        DynamicDir: "",
+        StaticDirs: ["Medecine Chinoise/tableaux pathologiques/symptômes",
+          "Physiology",
+          "Temporality",
+          "Anatomy"
+        ],
+        VizFiles: []
+      };
+    }
+
     // console.log("context_payload_orig", context_payload_orig);
     // console.log("context_payload_orig dyn dir", context_payload_orig[0]["DynamicDir"]);
     let context_payload = {
-      value: context_payload_orig[0]
+      value: context_payload_orig
     };
     context_payload.value["DynamicDir"] = folder.path;
 
@@ -402,7 +507,6 @@ export default class JugglPlugin extends Plugin implements IJugglPlugin {
 
     if (!success) {
       console.log("Failure postNamedFieldsValues_synced");
-      // await mm.unlock();
       return;
     }
 
@@ -413,7 +517,7 @@ export default class JugglPlugin extends Plugin implements IJugglPlugin {
     console.log("DONE Formulas");
 
     // Context Files should also include the files within the Global Static Folders.
-    const static_dirs: string[] = context_payload_orig[0]["StaticDirs"];
+    const static_dirs: string[] = context_payload_orig["StaticDirs"];
     console.log("static_dirs", static_dirs);
     let static_files: TFile[] = [];
     for (let static_dir of static_dirs) {
@@ -422,16 +526,31 @@ export default class JugglPlugin extends Plugin implements IJugglPlugin {
       console.log(current_dir.path, current_static_files);
       static_files.push(...current_static_files);
     }
+
+    let files_neighborhood: string[] = [];
+    for (let file of files) {
+      if (file.extension != '.md') {
+        continue;
+      }
+      let outlinks = dv.page(file.path).file.outlinks.values.map((v: Link) => v.path);
+      files_neighborhood = files_neighborhood.concat(outlinks);
+      let inlinks = dv.page(file.path).file.inlinks.values.map((v: Link) => v.path);
+      files_neighborhood = files_neighborhood.concat(inlinks);
+    }
+    let files_neighborhood_set: Set<string> = new Set(files_neighborhood);
+    files_neighborhood = [...files_neighborhood_set.values()];
+    static_files = [...new Set(static_files).values()].filter((f) => files_neighborhood.includes(f.path));
+    console.log("static_files (neighborhood)", static_files);
+
     // Make sure there is no duplicates.
     let files_and_static_set: Set<TFile> = new Set(files.concat(static_files));
     let files_and_static: TFile[] = [...files_and_static_set.values()]
     console.log("files_and_static", files_and_static);
 
     // Update the other files in the Context Dirs (both dynamic and static).
-    // InLinksCount and OutLinksCount are independant.
-    // LinksCount depends on InLinksCount and OutLinksCount.
+    // InLinks and OutLinks are independant.
     // Update all these formulas in parallel.
-    await Promise.all(files.map((file: TFile) => new Promise(res => {
+    await Promise.all(files_and_static.map((file: TFile) => new Promise(res => {
       return Promise.all([
         mm.updateSingleFormula({ file: file, fieldName: "InLinks" }),
         mm.updateSingleFormula({ file: file, fieldName: "OutLinks" }),
@@ -450,35 +569,47 @@ export default class JugglPlugin extends Plugin implements IJugglPlugin {
     // console.log("Created neovisView");
 
 
+    // Note: Use local mode (workspace is buggy). Expand and hide events is too slow to update nodes in real time
     // let juggl = neovisView.juggl;
-    // juggl.events.on('expand', async (nodes: NodeCollection) => { this.updateVizFiles(nodes, false); });
-    // juggl.events.on('hide', async (nodes: NodeCollection) => { this.updateVizFiles(nodes, false); });
+    juggl.events.on('expand', async (nodes: NodeCollection) => { this.updateVizFiles(nodes, false, null); });
+    juggl.events.on('hide', async (nodes: NodeCollection) => { this.updateVizFiles(nodes, false, null); });
     // // juggl.events.on('elementsChange', async () => { this.updateVizFiles(); });
-    // juggl.events.on('vizReady', async () => { this.updateVizFiles(cytoscape().collection(), true); });
-    // console.log("Added juggl viz events");
+    juggl.events.on('vizReady', async () => { this.updateVizFiles(cytoscape().collection(), true, neovisView); });
+    console.log("Added juggl viz events");
 
 
-    // await leaf.open(neovisView);
-    // console.log("Opened neovisView");
+    await leaf.open(neovisView);
+    console.log("Opened neovisView");
 
   }
 
-  private async updateVizFiles(expandedNodes: NodeCollection, force: boolean = false) {
+  private async updateVizFiles(expandedNodes: NodeCollection, force: boolean = false, neovisView: JugglView | null) {
     // @ts-ignore
     const mm = this.app.plugins.plugins["metadata-menu"].api;
 
-    // await mm.lock();
-
     console.log("updateVizFiles");
-
     console.log("expandedNodes", expandedNodes);
+
+    if (!neovisView) {
+      neovisView = this.app.workspace.getActiveViewOfType(JugglView);
+      if (neovisView == null) {
+        console.log("Cannot find JugglView (viz not ready yet)");
+        return;
+      }
+    }
+    let global_file: TFile | null = neovisView.juggl.globalFile; //this.app.vault.getAbstractFileByPath("Global.md") as TFile;
+
+    if (!global_file) {
+      console.log(`Cannot access global file`);
+      return;
+    }
 
     expandedNodes = expandedNodes.filter((node: NodeSingular) => {
       const id: VizId = VizId.fromNode(node);
       if (id.storeId === 'core') {
         const file: TFile | null = this.metadata.getFirstLinkpathDest(id.id, '');
         if (file) {
-          return file.path != "Global.md";
+          return !file.name.startsWith("Global ") && file.name != "Global.md";
         }
       }
       return true;
@@ -489,12 +620,6 @@ export default class JugglPlugin extends Plugin implements IJugglPlugin {
       return;
     }
 
-    const neovisView: JugglView | null = this.app.workspace.getActiveViewOfType(JugglView);
-    if (neovisView == null) {
-      console.log("Cannot find JugglView (viz not ready yet)");
-      // await mm.unlock();
-      return;
-    }
     // const neighbourhood = await neovisView.juggl.neighbourhood(expandedIds);
     // console.log("neighborhood", neighbourhood);
 
@@ -502,19 +627,16 @@ export default class JugglPlugin extends Plugin implements IJugglPlugin {
     // return;
 
 
-    let global_file: TFile = this.app.vault.getAbstractFileByPath("Global.md") as TFile;
-
     // Get the global Context
-    let context_payload_orig = await mm.getValues(global_file, "Context");
+    let context_payload_orig_list = await mm.getValues(global_file, "Context");
+    if (context_payload_orig_list.length == 0) {
+      console.log("[updateVizFiles] context_payload_orig_list is empty");
+      return;
+    }
+
+    let context_payload_orig = context_payload_orig_list[0];
 
     // Refresh the VizFiles (visible nodes)
-    // const neovisView: JugglView | null = this.app.workspace.getActiveViewOfType(JugglView);
-    // if (neovisView == null) {
-    //   console.log("Cannot find JugglView (viz not ready yet)");
-    //   await mm.unlock();
-    //   return;
-    // }
-
     const nodes: NodeCollection = neovisView.juggl.viz.nodes();
     const visible_nodes: NodeCollection = nodes.filter((node: NodeSingular, i: number, eles: CollectionArgument) => {
       return node.visible();
@@ -533,7 +655,7 @@ export default class JugglPlugin extends Plugin implements IJugglPlugin {
     console.log("visible_nodes_paths", visible_nodes_paths);
 
     let context_payload = {
-      value: context_payload_orig[0]
+      value: context_payload_orig
     };
     context_payload.value["VizFiles"] = visible_nodes_paths.join(", ");
 
@@ -545,6 +667,10 @@ export default class JugglPlugin extends Plugin implements IJugglPlugin {
       // await mm.unlock();
       return;
     }
+
+    // The VizInLinksCount and VizOutLinksCount formulas rely on the super global file (Global.md).
+    // Need to refresh the path to the current global.
+    this.updateCurrentGlobal(global_file);
 
     // Update the VizInLinksCount and VizOutLinksCount of all the VizFiles.
     let visible_nodes_files: (TFile | null)[] = visible_nodes_paths.map((path: string) => {
@@ -564,8 +690,6 @@ export default class JugglPlugin extends Plugin implements IJugglPlugin {
     })));
     await mm.applyUpdates();
     console.log("Finished updating viz links count");
-
-    // await mm.unlock();
   }
 
   public activeGraphs(): IJuggl[] {

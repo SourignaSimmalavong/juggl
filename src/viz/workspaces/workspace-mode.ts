@@ -1,24 +1,24 @@
-import type {IAGMode} from 'juggl-api';
-import type {EventNames, EventObject, NodeSingular} from 'cytoscape';
-import type {Juggl} from '../visualization';
-import type {NodeCollection} from 'cytoscape';
-import type {Menu} from 'obsidian';
+import type { IAGMode } from 'juggl-api';
+import type { EventNames, EventObject, NodeSingular } from 'cytoscape';
+import type { Juggl } from '../visualization';
+import type { NodeCollection } from 'cytoscape';
+import type { Menu } from 'obsidian';
 import Toolbar from '../../ui/toolbar/Toolbar.svelte';
-import {Component} from 'obsidian';
-import {VizId} from 'juggl-api';
+import { Component } from 'obsidian';
+import { VizId } from 'juggl-api';
 import {
   CLASS_ACTIVE_NODE,
   CLASS_CONNECTED_ACTIVE_NODE, CLASS_EXPANDED, CLASS_HARD_FILTERED,
   CLASS_INACTIVE_NODE, CLASS_PINNED, CLASS_PROTECTED,
   VIEWPORT_ANIMATION_TIME,
 } from '../../constants';
-import type {Core} from 'cytoscape';
-import type {SvelteComponent} from 'svelte';
+import type { Core } from 'cytoscape';
+import type { SvelteComponent } from 'svelte';
 import {
   getLayoutSetting,
 } from '../layout-settings';
-import {icons, pathToSvg} from '../../ui/icons';
-import {WorkspaceModal} from '../../ui/workspace-modal';
+import { icons, pathToSvg } from '../../ui/icons';
+import { WorkspaceModal } from '../../ui/workspace-modal';
 
 
 class EventRec {
@@ -71,7 +71,7 @@ export class WorkspaceMode extends Component implements IAGMode {
         if (id.storeId === 'core') {
           commands.push({
             content: pathToSvg(icons.ag_file),
-            select: async function(ele: NodeSingular, gestureStart: any, event: Event) {
+            select: async function (ele: NodeSingular, gestureStart: any, event: Event) {
               // @ts-ignore
               await plugin.openFileFromNode(ele, event.originalEvent.metaKey);
             },
@@ -80,24 +80,24 @@ export class WorkspaceMode extends Component implements IAGMode {
         }
 
         commands.push(
-            {
-              content: pathToSvg(icons.ag_hide),
-              select: function(ele: NodeSingular) {
-                mode.removeNodes(ele);
-              },
-              enabled: true,
+          {
+            content: pathToSvg(icons.ag_hide),
+            select: function (ele: NodeSingular) {
+              mode.removeNodes(ele);
             },
-            {
-              content: pathToSvg(icons.ag_fit),
-              select: function(ele: NodeSingular) {
-                mode.updateActiveNode(ele, true);
-              },
-              enabled: true, // whether the command is selectable
-            });
+            enabled: true,
+          },
+          {
+            content: pathToSvg(icons.ag_fit),
+            select: function (ele: NodeSingular) {
+              mode.updateActiveNode(ele, true);
+            },
+            enabled: true, // whether the command is selectable
+          });
         if (n.hasClass(CLASS_PINNED)) {
           commands.push({
             content: pathToSvg(icons.ag_unlock),
-            select: function(ele: NodeSingular) {
+            select: function (ele: NodeSingular) {
               mode.unpin(ele);
             },
             enabled: true, // whether the command is selectable
@@ -105,7 +105,7 @@ export class WorkspaceMode extends Component implements IAGMode {
         } else {
           commands.push({
             content: pathToSvg(icons.ag_lock),
-            select: function(ele: NodeSingular) {
+            select: function (ele: NodeSingular) {
               mode.pin(ele);
             },
             enabled: true, // whether the command is selectable
@@ -114,7 +114,7 @@ export class WorkspaceMode extends Component implements IAGMode {
         if (n.hasClass(CLASS_EXPANDED)) {
           commands.push({
             content: pathToSvg(icons.ag_collapse),
-            select: function(ele: NodeSingular) {
+            select: function (ele: NodeSingular) {
               mode.removeNodes(ele);
             },
             enabled: true, // whether the command is selectable
@@ -122,7 +122,7 @@ export class WorkspaceMode extends Component implements IAGMode {
         } else {
           commands.push({
             content: pathToSvg(icons.ag_expand),
-            select: function(ele: NodeSingular) {
+            select: function (ele: NodeSingular) {
               view.expand(ele);
             },
             enabled: true, // whether the command is selectable
@@ -148,7 +148,7 @@ export class WorkspaceMode extends Component implements IAGMode {
     };
 
     // @ts-ignore
-    this.menu = this.viz.cxtmenu( defaults );
+    this.menu = this.viz.cxtmenu(defaults);
 
     this.registerCyEvent('tap', 'node', async (e: EventObject) => {
       if (!this.view.settings.openWithShift || e.originalEvent.shiftKey) {
@@ -201,23 +201,25 @@ export class WorkspaceMode extends Component implements IAGMode {
     }));
 
     this.registerEvent(this.view.on('expand', (expanded) => {
-      this.updateActiveNode(expanded, false);
+      if (this.view.settings.addNodesOnRefresh) {
+        this.updateActiveNode(expanded, false);
+      }
     }));
 
     // TODO: What to do with this?
     this.registerEvent(this.view.on('elementsChange', () => {
-      if (this.recursionPreventer) {
+      if (this.recursionPreventer || !this.view.settings.addNodesOnRefresh) {
         return;
       }
       // Remove nodes that are not protected and not connected to expanded nodes
       this.viz.nodes()
-          .difference(this.viz.nodes(`.${CLASS_PROTECTED}`))
-          .filter((ele) => {
-            // If none in the closed neighborhood are expanded.
-            // Note that the closed neighborhood includes the current note.
-            return ele.closedNeighborhood(`node.${CLASS_PROTECTED}`).length === 0;
-          })
-          .remove();
+        .difference(this.viz.nodes(`.${CLASS_PROTECTED}`))
+        .filter((ele) => {
+          // If none in the closed neighborhood are expanded.
+          // Note that the closed neighborhood includes the current note.
+          return ele.closedNeighborhood(`node.${CLASS_PROTECTED}`).length === 0;
+        })
+        .remove();
       this.updateActiveNode(this.viz.nodes(`.${CLASS_ACTIVE_NODE}`), false);
       this.recursionPreventer = true;
       this.view.onGraphChanged();
@@ -256,7 +258,7 @@ export class WorkspaceMode extends Component implements IAGMode {
   }
 
   registerCyEvent(name: EventNames, selector: string, callback: any) {
-    this.events.push({eventName: name, selector: selector, event: callback});
+    this.events.push({ eventName: name, selector: selector, event: callback });
     if (selector) {
       this.viz.on(name, selector, callback);
     } else {
@@ -290,57 +292,57 @@ export class WorkspaceMode extends Component implements IAGMode {
     if (nodes.length > 0) {
       menu.addItem((item) => {
         item.setTitle('Expand selection (E)').setIcon('ag-expand')
-            .onClick(async (evt) => {
-              await this.view.expand(nodes);
-            });
+          .onClick(async (evt) => {
+            await this.view.expand(nodes);
+          });
       });
       menu.addItem((item) => {
         item.setTitle('Collapse selection (C)').setIcon('ag-collapse')
-            .onClick((evt) =>{
-              this.collapse(nodes);
-            });
+          .onClick((evt) => {
+            this.collapse(nodes);
+          });
       });
       menu.addItem((item) => {
         item.setTitle('Hide selection (H)').setIcon('ag-hide')
-            .onClick((evt) => {
-              this.removeNodes(nodes);
-            });
+          .onClick((evt) => {
+            this.removeNodes(nodes);
+          });
       });
-      menu.addItem((item) =>{
+      menu.addItem((item) => {
         item.setTitle('Select all (A)').setIcon('ag-select-all')
-            .onClick((evt) => {
-              this.selectAll();
-            });
+          .onClick((evt) => {
+            this.selectAll();
+          });
       });
       menu.addItem((item) => {
         item.setTitle('Invert selection (I)').setIcon('ag-select-inverse')
-            .onClick((evt) => {
-              this.invertSelection();
-            });
+          .onClick((evt) => {
+            this.invertSelection();
+          });
       });
     }
     if (nodes.length > 0) {
       menu.addItem((item) => {
         item.setTitle('Select neighbors (N)').setIcon('ag-select-neighbors')
-            .onClick((evt) => {
-              this.selectNeighbourhood(nodes);
-            });
+          .onClick((evt) => {
+            this.selectNeighbourhood(nodes);
+          });
       });
       const pinned = this.view.getPinned();
       if (nodes.difference(pinned).length > 0) {
         menu.addItem((item) => {
           item.setTitle('Pin selection (P)').setIcon('ag-lock')
-              .onClick((evt) => {
-                this.pin(nodes);
-              });
+            .onClick((evt) => {
+              this.pin(nodes);
+            });
         });
       }
       if (nodes.intersect(pinned).length > 0) {
         menu.addItem((item) => {
           item.setTitle('Unpin selection (U)').setIcon('ag-unlock')
-              .onClick((evt) => {
-                this.unpin(nodes);
-              });
+            .onClick((evt) => {
+              this.unpin(nodes);
+            });
         });
       }
     }
@@ -382,22 +384,22 @@ export class WorkspaceMode extends Component implements IAGMode {
     });
     this.view.on('selectChange', this.toolbar.onSelect.bind(this.toolbar));
     this.view.on('vizReady', (viz) => {
-      this.toolbar.$set({viz: viz});
+      this.toolbar.$set({ viz: viz });
       this.toolbar.onSelect.bind(this.toolbar)();//
     });
   }
 
   updateActiveNode(node: NodeCollection, followImmediate: boolean) {
     this.viz.elements()
-        .removeClass([CLASS_CONNECTED_ACTIVE_NODE, CLASS_ACTIVE_NODE, CLASS_INACTIVE_NODE])
-        .difference(node.closedNeighborhood())
-        .addClass(CLASS_INACTIVE_NODE);
+      .removeClass([CLASS_CONNECTED_ACTIVE_NODE, CLASS_ACTIVE_NODE, CLASS_INACTIVE_NODE])
+      .difference(node.closedNeighborhood())
+      .addClass(CLASS_INACTIVE_NODE);
     node.addClass(CLASS_ACTIVE_NODE);
     const neighbourhood = node.connectedEdges()
-        .addClass(CLASS_CONNECTED_ACTIVE_NODE)
-        .connectedNodes()
-        .addClass(CLASS_CONNECTED_ACTIVE_NODE)
-        .union(node);
+      .addClass(CLASS_CONNECTED_ACTIVE_NODE)
+      .connectedNodes()
+      .addClass(CLASS_CONNECTED_ACTIVE_NODE)
+      .union(node);
     if (followImmediate) {
       this.viz.animate({
         fit: {
@@ -419,15 +421,15 @@ export class WorkspaceMode extends Component implements IAGMode {
 
   collapse(nodes: NodeCollection) {
     const selectedProtected = nodes.filter(`:selected`)
-        .removeClass([CLASS_PROTECTED, CLASS_EXPANDED]);
+      .removeClass([CLASS_PROTECTED, CLASS_EXPANDED]);
     selectedProtected.openNeighborhood()
-        .nodes()
-        .filter((ele) => {
-          // If none in the closed neighborhood are protected that aren't also selected
-          // (their PROTECTED flag has been removed)
-          return ele.closedNeighborhood(`node.${CLASS_PROTECTED}`).length === 0;
-        })
-        .remove();
+      .nodes()
+      .filter((ele) => {
+        // If none in the closed neighborhood are protected that aren't also selected
+        // (their PROTECTED flag has been removed)
+        return ele.closedNeighborhood(`node.${CLASS_PROTECTED}`).length === 0;
+      })
+      .remove();
     // can this cause race conditions with on elementsChange?
     this.recursionPreventer = true;
     this.view.onGraphChanged(true, true);
@@ -453,9 +455,9 @@ export class WorkspaceMode extends Component implements IAGMode {
 
   invertSelection() {
     this.viz.$(':selected')
-        .unselect()
-        .absoluteComplement()
-        .select();
+      .unselect()
+      .absoluteComplement()
+      .select();
     this.view.trigger('selectChange');
   }
 
@@ -465,16 +467,16 @@ export class WorkspaceMode extends Component implements IAGMode {
   selectNeighbourhood(nodes: NodeCollection) {
     // TODO: This keeps self-loops selected.
     this.viz.nodes(':selected')
-        .unselect();
+      .unselect();
     nodes.openNeighborhood()
-        .select();
+      .select();
     this.view.trigger('selectChange');
   }
 
   unpin(nodes: NodeCollection) {
     const unlocked = nodes
-        .unlock()
-        .removeClass(CLASS_PINNED);
+      .unlock()
+      .removeClass(CLASS_PINNED);
     this.view.restartLayout();
     this.view.trigger('unpin', unlocked);
   }
@@ -485,8 +487,8 @@ export class WorkspaceMode extends Component implements IAGMode {
 
   pin(nodes: NodeCollection) {
     const locked = nodes
-        .lock()
-        .addClass(CLASS_PINNED);
+      .lock()
+      .addClass(CLASS_PINNED);
     this.view.restartLayout();
     this.view.trigger('pin', locked);
   }

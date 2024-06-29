@@ -43,12 +43,14 @@ import {
 import { LocalMode } from './local-mode';
 import { parseLayoutSettings } from './layout-settings';
 import { filter } from './query-builder';
+import { log } from 'console';
 
 export const MD_VIEW_TYPE = 'markdown';
 
 let VIEW_COUNTER = 0;
 
 export class Juggl extends Component implements IJuggl {
+  globalFile: TFile | null = null;
   element: Element;
   workspace: Workspace;
   settings: IJugglSettings;
@@ -564,6 +566,7 @@ export class Juggl extends Component implements IJuggl {
   }
 
   onGraphChanged(batch: boolean = true, debounceLayout = false) {
+    console.log("onGraphChanged", batch, debounceLayout);
     if (batch) {
       this.viz.startBatch();
     }

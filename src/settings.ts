@@ -182,6 +182,7 @@ export const DefaultJugglSettings: IJugglPluginSettings = {
     toolbar: true,
     width: '100%',
     zoomSpeed: 1,
+    addNodesOnRefresh: true,
   },
   embedSettings: {
     animateLayout: true,
@@ -197,7 +198,7 @@ export const DefaultJugglSettings: IJugglPluginSettings = {
     layout: 'force-directed',
     limit: 1000,
     mergeEdges: true,
-    mode: 'local',
+    mode: 'workspace',
     navigator: false,
     openWithShift: false,
     readContent: true,
@@ -205,6 +206,7 @@ export const DefaultJugglSettings: IJugglPluginSettings = {
     toolbar: false,
     width: '100%',
     zoomSpeed: 1,
+    addNodesOnRefresh: false,
   },
   dirGraphSettings: {
     animateLayout: true,
@@ -212,7 +214,7 @@ export const DefaultJugglSettings: IJugglPluginSettings = {
     autoExpand: false,
     autoZoom: false,
     coreStore: OBSIDIAN_STORE_NAME,
-    expandInitial: true,
+    expandInitial: false,  // false, otherwise the VizIn/OutLinksCount might get mistaken.
     fdgdLayout: 'cola',
     filter: '-class:dangling -class:file',
     height: '100%',
@@ -221,13 +223,14 @@ export const DefaultJugglSettings: IJugglPluginSettings = {
     hoverEdges: false,
     layout: 'force-directed',
     mergeEdges: true,
-    mode: 'workspace',
+    mode: 'local',
     navigator: true,
     openWithShift: true,
     readContent: false,
     styleGroups: [],
     toolbar: true,
     zoomSpeed: 1,
+    addNodesOnRefresh: false,
   },
   globalGraphSettings: {
     animateLayout: true,
@@ -251,6 +254,7 @@ export const DefaultJugglSettings: IJugglPluginSettings = {
     styleGroups: [],
     toolbar: true,
     zoomSpeed: 1,
+    addNodesOnRefresh: true,
   },
 };
 
