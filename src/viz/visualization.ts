@@ -435,6 +435,10 @@ export class Juggl extends Component implements IJuggl {
     if (doIncludeOutLinks && !doIncludeInLinks) {
       let all_outlinks: string[] = toExpand.map((n: NodeSingular) => {
         let path = n.data().path;
+        if (!path) {
+          // happen on inexisting file
+          return [];
+        }
         let current_outlinks = dv.page(path).file.outlinks.values;
         return current_outlinks.map((v: Link) => v.path);
       })
@@ -449,6 +453,10 @@ export class Juggl extends Component implements IJuggl {
     else if (!doIncludeOutLinks && doIncludeInLinks) {
       let all_inlinks: string[] = toExpand.map((n: NodeSingular) => {
         let path = n.data().path;
+        if (!path) {
+          // happen on inexisting file
+          return [];
+        }
         let current_inlinks = dv.page(path).file.inlinks.values;
         return current_inlinks.map((v: Link) => v.path);
       })

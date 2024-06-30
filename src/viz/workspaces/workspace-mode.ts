@@ -463,7 +463,7 @@ export class WorkspaceMode extends Component implements IAGMode {
   }
 
   selectAll() {
-    this.viz.nodes().select();
+    this.viz.nodes(':visible').select();
     this.view.trigger('selectChange');
   }
 
