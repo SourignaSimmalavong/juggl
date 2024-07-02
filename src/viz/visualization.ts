@@ -17,6 +17,8 @@ import cytoscape, {
   NodeDefinition,
   NodeSingular, Singular,
   type CollectionReturnValue,
+  type EdgeCollection,
+  type EdgeDataDefinition,
 } from 'cytoscape';
 import type {
   IAGMode,
@@ -36,6 +38,7 @@ import {
   CLASS_ACTIVE_NODE,
   CLASS_CONNECTED_HOVER,
   CLASS_EXPANDED, CLASS_FILTERED,
+  CLASS_HARD_FILTERED,
   CLASS_HOVER,
   CLASS_PINNED, CLASS_PROTECTED,
   CLASS_UNHOVER, CLASSES, DEBOUNCE_FOLLOW, DEBOUNCE_LAYOUT,
@@ -45,7 +48,8 @@ import { LocalMode } from './local-mode';
 import { parseLayoutSettings } from './layout-settings';
 import { filter } from './query-builder';
 import { log } from 'console';
-import type { Link } from 'obsidian-dataview';
+import type { DataviewApi, Link } from 'obsidian-dataview';
+import { getAPI } from "obsidian-dataview";
 
 export const MD_VIEW_TYPE = 'markdown';
 
@@ -467,20 +471,6 @@ export class Juggl extends Component implements IJuggl {
         return all_inlinks.includes(nd.data.path)
       });
       console.log("[expandInLinks] neighbourhood after", neighbourhood);
-
-      // // '.reduce' merge all the NodeCollection[] into a single NodeCollection.
-      // let outgoers: NodeCollection = toExpand.map((n) => {
-      //   return n.incomers().nodes();
-      // }).reduce((acc, curr) => acc.union(curr));
-
-      // // Convert the outgoer nodes to NodeDefinition objects
-      // neighbourhood = outgoers.map(node => {
-      //   return {
-      //     id: node.id(),
-      //     data: node.data()
-      //     // Add additional properties as needed
-      //   };
-      // });
     }
     else if (doIncludeInLinks && doIncludeOutLinks) {
       neighbourhood = await this.neighbourhood(expandedIds);
@@ -490,13 +480,15 @@ export class Juggl extends Component implements IJuggl {
     }
 
     this.mergeToGraph(neighbourhood, false, false);
-    const nodes = this.viz.collection();
+    let nodes = this.viz.collection();
     neighbourhood.forEach((n) => {
       nodes.merge(this.viz.$id(n.data.id) as NodeSingular);
     });
-
+    nodes.forEach((n: NodeSingular) => {
+      n.removeClass(CLASS_HARD_FILTERED);
+    });
     const edges = await this.buildEdges(nodes);
-    const edgesInGraph = this.mergeToGraph(edges, false, triggerGraphChanged);
+    const edgesInGraph: IMergedToGraph = this.mergeToGraph(edges, false, triggerGraphChanged);
     if (batch) {
       this.viz.endBatch();
     }
@@ -572,6 +564,124 @@ export class Juggl extends Component implements IJuggl {
   setLayout(settings: LayoutSettings) {
     this.settings.layout = settings.options;
     this.restartLayout();
+  }
+
+  getClosestIndirectNeighbors(root: NodeSingular,
+    visibleNodes: NodeCollection,
+    deletedNodes: NodeCollection,
+    marks: Array<string>): NodeCollection {
+
+    const dv: DataviewApi = getAPI(this.plugin.app);
+    let indirectNeighbors: NodeCollection = this.viz.collection();
+
+    let path = root.data().path;
+    if (!path) {
+      // happen on inexisting file
+      return indirectNeighbors;
+    }
+    const page = dv.page(path);
+    const inlinks: Array<string> = page.file.inlinks.values.map((v: Link) => v.path);
+
+    // inlinks that are still there.
+    let inlinksIndirectNeighbors = visibleNodes.filter((node: NodeSingular) => {
+      return inlinks.includes(node.data().path);
+    });
+    let deletedNeighbors = deletedNodes.filter((node: NodeSingular) => {
+      return inlinks.includes(node.data().path);
+    });
+
+    // Recursively find all the ancestors that are within the indirectNeighborsPool.
+    for (let deletedNeighbor of deletedNeighbors) {
+      if (!marks.contains(deletedNeighbor.data().path)) // avoids infinite recursion on cyclic graphs
+      {
+        let currentMarks = inlinksIndirectNeighbors.map((node: NodeSingular) => node.data().path);
+        let currentInLinksIndirectNeighbors =
+          this.getClosestIndirectNeighbors(deletedNeighbor, visibleNodes, deletedNodes, currentMarks);
+        inlinksIndirectNeighbors = inlinksIndirectNeighbors.add(currentInLinksIndirectNeighbors);
+      }
+    }
+
+    return inlinksIndirectNeighbors;
+
+  }
+
+  condensedLayout(settings: LayoutSettings) {
+    /*
+    Only keep important nodes.
+    An important node check these parameters:
+    * 2 or more inlinks
+    */
+
+    // Retrieve all the visible nodes.
+    const all_nodes: NodeCollection = this.viz.nodes(':visible');
+
+    // Convert nodes to paths.
+
+    const dv: DataviewApi = getAPI(this.plugin.app);
+    let nodes_to_remove = all_nodes.filter((node: NodeSingular) => {
+      let path = node.data().path;
+      if (!path) {
+        // happen on inexisting file
+        return false;
+      }
+      const page = dv.page(path);
+
+      if (page.VizInLinksCount === undefined || page.VizOutLinksCount === undefined) {
+        // Certainly a syndrom.
+        return false;
+      }
+
+      const VizInLinksCount: number = page.VizInLinksCount;
+      // const VizOutLinksCount: number = page.VizOutLinksCount;
+
+      return VizInLinksCount < 2;  // && VizOutLinksCount < 2;
+    });
+    console.log("nodes_to_remove", nodes_to_remove);
+    this.removeNodes(nodes_to_remove);
+
+    // Some leaf nodes might have become orphans because of the removed nodes.
+    // Reattach them to the nodes that are still visible.
+    let visibleNodes = this.viz.nodes(':visible');
+    console.log("visibleNodes", visibleNodes);
+    let extraEdges: EdgeDefinition[] = [];
+    visibleNodes.forEach((node: NodeSingular) => {
+      if (!node.connectedEdges(':visible').empty()) {
+        // The node is already connected.
+        return;
+      }
+
+      // Orphan
+      let closestIndirectNeighbors = this.getClosestIndirectNeighbors(node, visibleNodes, nodes_to_remove, []);
+
+      // build edges from the neighbors to current node.
+      for (let indirectNeighbor of closestIndirectNeighbors) {
+        let srcId = indirectNeighbor.id();
+        let otherId = node.id();
+        const edgeId = `${srcId}->${otherId}`;
+        const id = `${edgeId}1`
+        let edge = {
+          group: 'edges',
+          data: {
+            id,
+            source: srcId,
+            target: otherId,
+            context: "",
+            edgeCount: 1,
+            //type
+          } as EdgeDataDefinition,
+          classes: ` inline`
+        } as EdgeDefinition;
+
+        extraEdges.push(edge);
+      }
+    });
+
+    console.log("extraEdges", extraEdges);
+
+    this.mergeToGraph(extraEdges, true, false);
+
+    // Refresh the layout.
+    this.setLayout(settings);
   }
 
 

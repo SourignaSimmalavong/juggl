@@ -362,6 +362,7 @@ export class WorkspaceMode extends Component implements IAGMode {
         expandInLinksClick: this.expandInLinksSelection.bind(this),
         expandOutLinksClick: this.expandOutLinksSelection.bind(this),
         fdgdClick: () => this.view.setLayout(getLayoutSetting('force-directed', this.view.settings)),
+        condensedClick: () => this.view.condensedLayout(getLayoutSetting('force-directed', this.view.settings)),
         concentricClick: () => this.view.setLayout(getLayoutSetting('circle')),
         gridClick: () => this.view.setLayout(getLayoutSetting('grid')),
         hierarchyClick: () => this.view.setLayout(getLayoutSetting('hierarchy')),
@@ -470,7 +471,7 @@ export class WorkspaceMode extends Component implements IAGMode {
   invertSelection() {
     this.viz.$(':selected')
       .unselect()
-      .absoluteComplement()
+      .absoluteComplement().intersection(this.viz.$(':visible'))
       .select();
     this.view.trigger('selectChange');
   }
@@ -483,7 +484,7 @@ export class WorkspaceMode extends Component implements IAGMode {
     this.viz.nodes(':selected')
       .unselect();
     nodes.openNeighborhood()
-      .select();
+      .select().intersect(this.viz.$(':visible'));
     this.view.trigger('selectChange');
   }
 

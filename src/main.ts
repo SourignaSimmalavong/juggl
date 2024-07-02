@@ -619,14 +619,7 @@ export default class JugglPlugin extends Plugin implements IJugglPlugin {
     if (expandedNodes.length == 0 && !force) {
       return;
     }
-
-    // const neighbourhood = await neovisView.juggl.neighbourhood(expandedIds);
-    // console.log("neighborhood", neighbourhood);
-
-    // await mm.unlock();
-    // return;
-
-
+    
     // Get the global Context
     let context_payload_orig_list = await mm.getValues(global_file, "Context");
     if (context_payload_orig_list.length == 0) {
